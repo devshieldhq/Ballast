@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Ballast</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <span class="wordmark">Ballast</span>
+      <span id="wallet-badge" class="badge">Not connected</span>
+    </header>
+
+    <main id="view">
+      <section id="market-card" class="card">
+        <div class="card-label">Market</div>
+        <div class="price-row">
+          <span id="price-value">--</span>
+          <span id="change-value" class="change">--</span>
+        </div>
+        <div id="volatility-note" class="muted">Checking volatility…</div>
+      </section>
+
+      <section id="position-card" class="card">
+        <div class="card-label">Your position</div>
+        <div id="position-empty" class="muted">Nothing shielded yet</div>
+        <div id="position-active" class="hidden">
+          <div class="price-row">
+            <span id="shielded-amount">--</span>
+            <span id="apy-value" class="change">--</span>
+          </div>
+          <div class="muted">Parked in Aave, earning yield</div>
+        </div>
+      </section>
+
+      <section id="amount-card" class="card hidden">
+        <div class="card-label">Amount to shield</div>
+        <input id="amount-input" type="number" step="0.001" min="0" placeholder="0.00" />
+        <div id="balance-note" class="muted">--</div>
+      </section>
+
+      <button id="action-btn" class="primary-btn" disabled>Connect wallet</button>
+      <div id="status-line" class="muted"></div>
+    </main>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
