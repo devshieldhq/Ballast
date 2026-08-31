@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@nimiq/mini-app-sdk": "^1.0.0",
+    "@nimiq/mini-app-sdk": "^0.1.0",
     "@bgd-labs/aave-address-book": "^3.0.0",
     "ethers": "^6.13.0"
   },
