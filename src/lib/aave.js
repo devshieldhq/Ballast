@@ -1,30 +1,23 @@
 // Supplies/withdraws USDC from Aave V3 on Base.
-//
-// Why USDC and not USDT: Aave's Base market lists USDC as its major
-// stablecoin reserve with real liquidity; USDT is not a listed Base
-// reserve. Supplying an unsupported asset simply reverts, so USDC is the
-// correct choice here even though the project shields into "a stablecoin"
-// conceptually — verify current reserves at app.aave.com/markets before
-// assuming this hasn't changed.
-//
-// The Pool contract address itself comes from Aave's own verified address
-// book package rather than being hardcoded — addresses are proxied and a
-// wrong one either reverts (best case) or sends funds nowhere (worst
-// case). Never paste a pool address from memory into code that moves
-// real funds.
+// USDC, not USDT — Aave's Base market only has real listed liquidity in
+// USDC. Verify at app.aave.com/markets if this changes.
+// Pool address comes from Aave's official address-book package, not
+// hardcoded — addresses are proxied and wrong ones fail silently.
 import { AaveV3Base } from '@bgd-labs/aave-address-book'
 import { ethers } from 'ethers'
 import { ensureApproval } from './erc20.js'
 
 const POOL_ADDRESS = AaveV3Base.POOL
 
+const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const ATOKEN_USDC = '0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB'
+
 const POOL_ABI = [
   'function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external',
   'function withdraw(address asset, uint256 amount, address to) external returns (uint256)'
 ]
 
-// Aave's own sentinel for "withdraw everything, including any interest
-// accrued" — avoids us having to track and re-supply an exact figure.
+// Withdraws everything, principal + accrued interest.
 export const WITHDRAW_ALL = ethers.MaxUint256
 
 export async function supply(tokenAddress, amount, signer) {
@@ -40,4 +33,19 @@ export async function withdraw(tokenAddress, amount, signer) {
   const owner = await signer.getAddress()
   const tx = await pool.withdraw(tokenAddress, amount, owner)
   return tx.wait()
+}
+
+export async function getUsdcSupplyApy(provider) {
+  const pool = new ethers.Contract(POOL_ADDRESS, [
+    'function getReserveData(address asset) view returns (tuple(uint256 configuration,uint128 liquidityIndex,uint128 currentLiquidityRate,uint128 variableBorrowIndex,uint128 currentVariableBorrowRate,uint128 currentStableBorrowRate,uint40 lastUpdateTimestamp,uint16 id,address aTokenAddress,address stableDebtTokenAddress,address variableDebtTokenAddress,address interestRateStrategyAddress,uint128 accruedToTreasury,uint128 unbacked,uint128 isolationModeTotalDebt))'
+  ], provider)
+  const data = await pool.getReserveData(USDC_ADDRESS)
+  const ray = 1e27
+  const apr = Number(data.currentLiquidityRate) / ray
+  return (Math.pow(1 + apr / 365, 365) - 1) * 100
+}
+
+export async function getShieldedUsdcBalance(provider, userAddress) {
+  const token = new ethers.Contract(ATOKEN_USDC, ['function balanceOf(address) view returns (uint256)'], provider)
+  return token.balanceOf(userAddress)
 }
