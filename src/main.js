@@ -99,12 +99,13 @@ async function handleConnect() {
   setStatus('Connecting…')
   el.actionBtn.disabled = true
   try {
-    const { address } = await connectWallet()
+        const { address, isNimiqPay } = await connectWallet()
     provider = new ethers.BrowserProvider(window.ethereum)
     signer = await provider.getSigner()
     state.connected = true
     state.address = address
-    el.walletBadge.textContent = `${address.slice(0, 6)}…${address.slice(-4)}`
+    const modeTag = isNimiqPay ? '' : ' (browser test mode)'
+    el.walletBadge.textContent = `${address.slice(0, 6)}…${address.slice(-4)}${modeTag}`
     el.walletBadge.classList.add('connected')
     await refreshBalance()
     setStatus('')
