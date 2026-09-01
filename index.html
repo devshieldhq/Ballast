@@ -16,10 +16,19 @@
     <main id="view">
       <section id="market-card" class="card">
         <div class="card-label">Market</div>
+        <div class="market-topline">
+          <span class="live-badge" id="live-badge">○ CONNECTING</span>
+          <span id="updated-at" class="muted">Waiting for feed…</span>
+        </div>
         <div class="price-row">
           <span id="price-value">--</span>
           <span id="change-value" class="change">--</span>
         </div>
+        <div class="market-stats">
+          <div><span class="stat-label">Risk</span><strong id="risk-level" class="risk watch">--</strong></div>
+          <div><span class="stat-label">1m volatility</span><strong id="short-vol">--</strong></div>
+        </div>
+        <div id="market-chart" class="mini-chart" aria-label="Live ETH price chart"></div>
         <div id="volatility-note" class="muted">Checking volatility…</div>
       </section>
 
