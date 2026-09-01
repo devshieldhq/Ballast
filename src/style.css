@@ -127,3 +127,17 @@ body {
   text-align: center;
   min-height: 18px;
 }
+
+.market-topline { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:12px; }
+.market-topline .muted { margin:0; font-size:11px; }
+.live-badge { font-size:10px; letter-spacing:.08em; color:var(--text-muted); }
+.live-badge.live { color:var(--up); }
+.market-stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px; }
+.market-stats > div { border-top:1px solid var(--border); padding-top:10px; display:flex; flex-direction:column; gap:4px; }
+.stat-label { font-size:11px; color:var(--text-muted); }
+.market-stats strong { font-size:13px; font-weight:600; }
+.risk.calm { color:var(--up); }
+.risk.watch { color:#d7bd65; }
+.risk.high, .risk.critical { color:var(--down); }
+.mini-chart { height:70px; margin:16px 0 2px; border-radius:10px; background:linear-gradient(180deg, rgba(29,158,117,.10), transparent); position:relative; overflow:hidden; }
+.mini-chart::after { content:'LIVE MARKET'; position:absolute; right:9px; top:8px; font-size:9px; color:var(--text-muted); letter-spacing:.08em; }
