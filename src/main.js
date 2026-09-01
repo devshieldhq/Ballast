@@ -1,8 +1,8 @@
 import { ethers } from 'ethers'
 import { connectWallet } from './sdk/wallet.js'
-import { getMarketSnapshot } from './lib/price.js'
+import { startMarketMonitor, subscribeMarket, getMarketHistory } from './lib/price.js'
 import { swapEthToUsdc, swapUsdcToEth, TOKENS } from './lib/swap.js'
-import { supply, withdraw, WITHDRAW_ALL } from './lib/aave.js'
+import { supply, withdraw, WITHDRAW_ALL, getUsdcSupplyApy, getShieldedUsdcBalance } from './lib/aave.js'
 import { getEthBalance, parseReceivedAmount } from './lib/erc20.js'
 
 const el = {
@@ -10,6 +10,11 @@ const el = {
   price: document.getElementById('price-value'),
   change: document.getElementById('change-value'),
   volNote: document.getElementById('volatility-note'),
+  liveBadge: document.getElementById('live-badge'),
+  riskLevel: document.getElementById('risk-level'),
+  shortVol: document.getElementById('short-vol'),
+  updated: document.getElementById('updated-at'),
+  chart: document.getElementById('market-chart'),
   positionEmpty: document.getElementById('position-empty'),
   positionActive: document.getElementById('position-active'),
   shieldedAmount: document.getElementById('shielded-amount'),
@@ -40,12 +45,38 @@ function setStatus(text) {
 }
 
 function renderMarket(snapshot) {
-  el.price.textContent = `$${snapshot.price.toLocaleString()}`
+  el.price.textContent = `$${snapshot.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
   el.change.textContent = `${snapshot.change24h > 0 ? '+' : ''}${snapshot.change24h.toFixed(2)}%`
   el.change.className = `change ${snapshot.change24h >= 0 ? 'up' : 'down'}`
+
+  const labels = { calm: 'CALM', watch: 'WATCH', high: 'HIGH RISK', critical: 'CRITICAL' }
+  el.riskLevel.textContent = labels[snapshot.riskLevel] || 'WATCH'
+  el.riskLevel.className = `risk ${snapshot.riskLevel}`
+  el.shortVol.textContent = `${snapshot.shortTermVolatility.toFixed(2)}% / 1m`
+  el.liveBadge.textContent = snapshot.live ? '● LIVE' : '○ RECONNECTING'
+  el.liveBadge.className = snapshot.live ? 'live-badge live' : 'live-badge'
+  el.updated.textContent = `Updated ${new Date(snapshot.updatedAt).toLocaleTimeString()}`
+  renderChart()
   el.volNote.textContent = snapshot.isVolatile
     ? 'Volatility is elevated — consider shielding'
     : 'Market looks calm right now'
+}
+
+function renderChart() {
+  const points = getMarketHistory()
+  if (!el.chart || points.length < 2) return
+  const values = points.map(p => p.price)
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min || 1
+  const width = 440
+  const height = 70
+  const polyline = points.map((p, i) => {
+    const x = (i / Math.max(points.length - 1, 1)) * width
+    const y = height - ((p.price - min) / range) * (height - 12) - 6
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
+  el.chart.innerHTML = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img"><polyline points="${polyline}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke" /></svg>`
 }
 
 function renderPosition() {
@@ -82,8 +113,7 @@ function renderButton() {
 
 async function refreshMarket() {
   try {
-    const snapshot = await getMarketSnapshot()
-    renderMarket(snapshot)
+    await startMarketMonitor()
   } catch {
     el.volNote.textContent = 'Could not reach the price feed'
   }
@@ -92,6 +122,12 @@ async function refreshMarket() {
 async function refreshBalance() {
   if (!state.connected) return
   state.ethBalance = await getEthBalance(provider, state.address)
+  const shieldedBalance = await getShieldedUsdcBalance(provider, state.address).catch(() => 0n)
+  state.shieldedUsdcAmount = shieldedBalance
+  state.shielded = shieldedBalance > 0n
+  const apy = await getUsdcSupplyApy(provider).catch(() => null)
+  if (apy != null) el.apyValue.textContent = `${apy.toFixed(2)}% APY`
+  renderPosition()
   renderAmountCard()
 }
 
@@ -99,7 +135,7 @@ async function handleConnect() {
   setStatus('Connecting…')
   el.actionBtn.disabled = true
   try {
-        const { address, isNimiqPay } = await connectWallet()
+    const { address, isNimiqPay } = await connectWallet()
     provider = new ethers.BrowserProvider(window.ethereum)
     signer = await provider.getSigner()
     state.connected = true
@@ -185,6 +221,6 @@ el.actionBtn.addEventListener('click', () => {
   return handleUnshield()
 })
 
+subscribeMarket(renderMarket)
 refreshMarket()
-setInterval(refreshMarket, 30_000)
 renderButton()
