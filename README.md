@@ -24,13 +24,16 @@ Built for the Nimiq Mini Apps Competition, Cycle II.
   input. A gas buffer (`GAS_BUFFER_ETH` in `main.js`) is reserved.
 - **Supply/withdraw amounts** — read from each transaction's actual
   `Transfer` event after it's mined, not assumed from a quote.
+- **APY** — read live from Aave's `getReserveData`, not a placeholder.
+- **Position persistence** — read live from the actual aUSDC balance on
+  connect, so it survives a page reload instead of living only in memory.
+- **Live price feed** — a Binance WebSocket trade stream for real-time
+  price, layered with CoinGecko for the 24h reference figure. Includes a
+  risk classification (calm/watch/high/critical) based on both 24h change
+  and rolling 1-minute volatility, plus a small price chart.
 
-## Still stubbed / left for you to verify
+## Still left for you to verify
 
-- **APY display** — shows "earning" as a placeholder, not a live rate read
-  from Aave's reserve data. Cosmetic only.
-- **No persistence** — position state lives in memory and resets on page
-  reload. Fine for a demo, not for a real user closing the app mid-flow.
 - **Pool fee tier** (`POOL_FEE` in `swap.js`) — set to the 0.05% tier,
   which is typically the most liquid USDC/WETH pool on Base, but pool
   liquidity shifts over time in a way contract addresses don't. Check
