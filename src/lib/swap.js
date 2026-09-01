@@ -1,10 +1,7 @@
-// Swaps directly against Uniswap V3 on Base — no third-party aggregator,
-// no API key. Addresses below are verified against official sources as of
-// this writing (Uniswap's own deployments docs, Circle's USDC docs, and
-// the OP Stack's standard WETH predeploy). Re-verify before relying on
-// this with meaningful amounts — contract addresses don't change often,
-// but "don't change often" isn't "never," and this is the one class of
-// mistake that can't be undone.
+// Swaps directly against Uniswap V3 on Base — no aggregator, no API key.
+// Addresses verified against Uniswap's deployments docs, Circle's USDC
+// docs, and the OP Stack WETH predeploy. Re-check before relying on this
+// for meaningful amounts.
 import { ethers } from 'ethers'
 import { ensureApproval } from './erc20.js'
 
