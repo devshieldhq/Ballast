@@ -1,13 +1,7 @@
-// Wraps wallet access for both real Nimiq Pay and plain-browser testing.
-//
-// Nimiq Pay injects window.ethereum the same way MetaMask does, so the
-// entire EVM side of this app (balance, swap, Aave) works identically in
-// either environment. The Nimiq-specific SDK (init()) only matters for
-// Nimiq-native features — NIM payments, consensus state — which this app
-// doesn't currently use beyond connect. So: try it if it's there, don't
-// block on it if it's not. This lets the whole shield/unshield flow be
-// built and tested against MetaMask in a normal browser before ever
-// touching an actual phone.
+// Wraps wallet access for both Nimiq Pay and plain-browser testing.
+// Nimiq Pay injects window.ethereum the same as MetaMask, so the EVM side
+// works identically either way. Nimiq's own init() only matters for
+// NIM-native features this app doesn't use yet, so it's best-effort.
 import { init } from '@nimiq/mini-app-sdk'
 
 let nimiqApi = null
@@ -20,11 +14,10 @@ export async function connectWallet() {
     )
   }
 
-  // Best-effort: only succeeds inside the real Nimiq Pay WebView.
   try {
     nimiqApi = await init()
   } catch {
-    nimiqApi = null // Expected in a plain browser — not a real failure.
+    nimiqApi = null // Expected outside Nimiq Pay — not a real failure.
   }
 
   const [address] = await window.ethereum.request({ method: 'eth_requestAccounts' })
