@@ -22,6 +22,8 @@ const el = {
   positionActive: document.getElementById('position-active'),
   shieldedAmount: document.getElementById('shielded-amount'),
   apyValue: document.getElementById('apy-value'),
+  explorerLink: document.getElementById('position-explorer-link'),
+  positionSince: document.getElementById('position-since'),
   amountCard: document.getElementById('amount-card'),
   amountInput: document.getElementById('amount-input'),
   balanceNote: document.getElementById('balance-note'),
@@ -40,7 +42,8 @@ let state = {
   address: null,
   ethBalance: 0n,
   shielded: false,
-  shieldedUsdcAmount: 0n // real on-chain amount, set only after a confirmed tx
+  shieldedUsdcAmount: 0n, // real on-chain amount, set only after a confirmed tx
+  shieldedAt: null // only known within this session; not persisted
 }
 
 function setStatus(text) {
@@ -73,13 +76,30 @@ function renderChart() {
   const max = Math.max(...values)
   const range = max - min || 1
   const width = 440
-  const height = 70
-  const polyline = points.map((p, i) => {
+  const height = 90
+  const padTop = 18
+  const padBottom = 8
+  const plotHeight = height - padTop - padBottom
+
+  const coords = points.map((p, i) => {
     const x = (i / Math.max(points.length - 1, 1)) * width
-    const y = height - ((p.price - min) / range) * (height - 12) - 6
-    return `${x.toFixed(1)},${y.toFixed(1)}`
-  }).join(' ')
-  el.chart.innerHTML = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img"><polyline points="${polyline}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke" /></svg>`
+    const y = padTop + (1 - (p.price - min) / range) * plotHeight
+    return [x, y]
+  })
+  const linePoints = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
+  const areaPoints = `0,${height} ${linePoints} ${width},${height}`
+  const fmt = v => `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+
+  el.chart.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img">
+      <polygon points="${areaPoints}" fill="currentColor" opacity="0.12" />
+      <line x1="0" y1="${padTop}" x2="${width}" y2="${padTop}" stroke="currentColor" stroke-width="1" opacity="0.15" vector-effect="non-scaling-stroke" />
+      <line x1="0" y1="${height - padBottom}" x2="${width}" y2="${height - padBottom}" stroke="currentColor" stroke-width="1" opacity="0.15" vector-effect="non-scaling-stroke" />
+      <polyline points="${linePoints}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke" />
+    </svg>
+    <span class="chart-label chart-label-high">${fmt(max)}</span>
+    <span class="chart-label chart-label-low">${fmt(min)}</span>
+  `
 }
 
 function renderPosition() {
@@ -89,6 +109,10 @@ function renderPosition() {
     const display = ethers.formatUnits(state.shieldedUsdcAmount, 6)
     el.shieldedAmount.textContent = `$${Number(display).toFixed(2)}`
     el.apyValue.textContent = 'earning'
+    el.explorerLink.href = `https://basescan.org/address/${state.address}`
+    el.positionSince.textContent = state.shieldedAt
+      ? `Shielded ${new Date(state.shieldedAt).toLocaleString()}`
+      : ''
   }
 }
 
@@ -182,6 +206,7 @@ async function handleShield() {
 
     state.shielded = true
     state.shieldedUsdcAmount = usdcReceived
+    state.shieldedAt = Date.now()
     setStatus('Shielded')
   } catch (err) {
     setStatus(err.message)
@@ -207,6 +232,7 @@ async function handleUnshield() {
 
     state.shielded = false
     state.shieldedUsdcAmount = 0n
+    state.shieldedAt = null
     setStatus('Unshielded')
   } catch (err) {
     setStatus(err.message)
