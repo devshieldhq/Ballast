@@ -7,8 +7,7 @@ import { getEthBalance, parseReceivedAmount } from './lib/erc20.js'
 
 const el = {
   landing: document.getElementById('landing'),
-  landingConnectBtn: document.getElementById('landing-connect-btn'),
-  landingStatus: document.getElementById('landing-status'),
+  openAppBtn: document.getElementById('open-app-btn'),
   appShell: document.getElementById('app-shell'),
   walletBadge: document.getElementById('wallet-badge'),
   price: document.getElementById('price-value'),
@@ -105,7 +104,13 @@ function renderAmountCard() {
 }
 
 function renderButton() {
-  el.actionBtn.textContent = state.shielded ? 'Unshield' : 'Shield my funds'
+  if (!state.connected) {
+    el.actionBtn.textContent = 'Connect wallet'
+  } else if (!state.shielded) {
+    el.actionBtn.textContent = 'Shield my funds'
+  } else {
+    el.actionBtn.textContent = 'Unshield'
+  }
   el.actionBtn.disabled = false
 }
 
@@ -130,8 +135,8 @@ async function refreshBalance() {
 }
 
 async function handleConnect() {
-  el.landingStatus.textContent = 'Connecting…'
-  el.landingConnectBtn.disabled = true
+  setStatus('Connecting…')
+  el.actionBtn.disabled = true
   try {
     const { address, isNimiqPay } = await connectWallet()
     provider = new ethers.BrowserProvider(window.ethereum)
@@ -142,15 +147,11 @@ async function handleConnect() {
     el.walletBadge.textContent = `${address.slice(0, 6)}…${address.slice(-4)}${modeTag}`
     el.walletBadge.classList.add('connected')
     await refreshBalance()
-
-    // Wallet connected — swap from the landing pitch to the working app.
-    el.landing.classList.add('hidden')
-    el.appShell.classList.remove('hidden')
-    renderButton()
+    setStatus('')
   } catch (err) {
-    el.landingStatus.textContent = err.message
-    el.landingConnectBtn.disabled = false
+    setStatus(err.message)
   }
+  renderButton()
 }
 
 async function handleShield() {
@@ -217,9 +218,13 @@ async function handleUnshield() {
   renderButton()
 }
 
-el.landingConnectBtn.addEventListener('click', handleConnect)
+el.openAppBtn.addEventListener('click', () => {
+  el.landing.classList.add('hidden')
+  el.appShell.classList.remove('hidden')
+})
 
 el.actionBtn.addEventListener('click', () => {
+  if (!state.connected) return handleConnect()
   if (!state.shielded) return handleShield()
   return handleUnshield()
 })
