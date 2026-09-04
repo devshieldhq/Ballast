@@ -1,5 +1,4 @@
 import { defineConfig } from 'vite'
-import { resolve } from 'path'
 
 export default defineConfig({
   server: {
@@ -9,15 +8,6 @@ export default defineConfig({
     host: true
   },
   build: {
-    outDir: 'dist',
-    rollupOptions: {
-      // Vite only bundles index.html by default — landing.html needs to
-      // be listed explicitly or it's silently dropped from the production
-      // build (works in `npm run dev`, 404s once deployed).
-input: {
-  app: resolve(__dirname, 'index.html'),
-  landing: resolve(__dirname, 'landing.html')
-}
-    }
+    outDir: 'dist'
   }
 })
