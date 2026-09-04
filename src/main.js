@@ -6,6 +6,10 @@ import { supply, withdraw, WITHDRAW_ALL, getUsdcSupplyApy, getShieldedUsdcBalanc
 import { getEthBalance, parseReceivedAmount } from './lib/erc20.js'
 
 const el = {
+  landing: document.getElementById('landing'),
+  landingConnectBtn: document.getElementById('landing-connect-btn'),
+  landingStatus: document.getElementById('landing-status'),
+  appShell: document.getElementById('app-shell'),
   walletBadge: document.getElementById('wallet-badge'),
   price: document.getElementById('price-value'),
   change: document.getElementById('change-value'),
@@ -101,13 +105,7 @@ function renderAmountCard() {
 }
 
 function renderButton() {
-  if (!state.connected) {
-    el.actionBtn.textContent = 'Connect wallet'
-  } else if (!state.shielded) {
-    el.actionBtn.textContent = 'Shield my funds'
-  } else {
-    el.actionBtn.textContent = 'Unshield'
-  }
+  el.actionBtn.textContent = state.shielded ? 'Unshield' : 'Shield my funds'
   el.actionBtn.disabled = false
 }
 
@@ -132,8 +130,8 @@ async function refreshBalance() {
 }
 
 async function handleConnect() {
-  setStatus('Connecting…')
-  el.actionBtn.disabled = true
+  el.landingStatus.textContent = 'Connecting…'
+  el.landingConnectBtn.disabled = true
   try {
     const { address, isNimiqPay } = await connectWallet()
     provider = new ethers.BrowserProvider(window.ethereum)
@@ -144,11 +142,15 @@ async function handleConnect() {
     el.walletBadge.textContent = `${address.slice(0, 6)}…${address.slice(-4)}${modeTag}`
     el.walletBadge.classList.add('connected')
     await refreshBalance()
-    setStatus('')
+
+    // Wallet connected — swap from the landing pitch to the working app.
+    el.landing.classList.add('hidden')
+    el.appShell.classList.remove('hidden')
+    renderButton()
   } catch (err) {
-    setStatus(err.message)
+    el.landingStatus.textContent = err.message
+    el.landingConnectBtn.disabled = false
   }
-  renderButton()
 }
 
 async function handleShield() {
@@ -215,8 +217,9 @@ async function handleUnshield() {
   renderButton()
 }
 
+el.landingConnectBtn.addEventListener('click', handleConnect)
+
 el.actionBtn.addEventListener('click', () => {
-  if (!state.connected) return handleConnect()
   if (!state.shielded) return handleShield()
   return handleUnshield()
 })
