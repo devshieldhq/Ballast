@@ -238,7 +238,7 @@ body {
 .risk.watch { color:var(--brass-soft); }
 .risk.high, .risk.critical { color:var(--down); }
 .mini-chart {
-  height:70px; margin:16px 0 2px; border-radius:10px;
+  height:84px; margin:16px 0 2px; border-radius:10px;
   background:linear-gradient(180deg, rgba(59,131,119,.14), transparent);
   position:relative; overflow:hidden; color: var(--current);
 }
@@ -246,3 +246,19 @@ body {
   content:'LIVE MARKET'; position:absolute; right:9px; top:8px;
   font-size:9px; color:var(--mist); letter-spacing:.08em;
 }
+.chart-label {
+  position: absolute; left: 9px;
+  font-size: 10px; color: var(--mist);
+  font-variant-numeric: tabular-nums;
+}
+.chart-label-high { top: 8px; }
+.chart-label-low { bottom: 8px; }
+
+.explorer-link {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--current);
+  text-decoration: none;
+}
+.explorer-link:hover { color: var(--up); text-decoration: underline; }
