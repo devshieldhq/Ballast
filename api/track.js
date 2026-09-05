@@ -1,32 +1,20 @@
-// Records a shield event toward the public running total — hardened
-// version. Unlike a naive counter, this does NOT trust anything the
-// client reports. It takes only a transaction hash, independently reads
-// that transaction from Base's own RPC, and only credits the total if
-// the receipt contains a real Aave `Supply` event for the real USDC
-// reserve. A client can't inflate the number by lying about an amount,
-// because no client-supplied amount is ever used — the amount is read
-// from the chain itself.
+// Verifies a real Aave Supply event on-chain before crediting the public
+// total. Only takes a tx hash — the amount is read from the chain, never
+// trusted from the client, so it can't be spoofed by lying about a number.
 //
-// What this does NOT protect against: someone running many small real
-// supply transactions themselves to inflate the total. That's not
-// spoofing though — it's real USDC, really supplied to Aave, really
-// paying real gas each time. The number stays honest to what it claims
-// to measure (verified on-chain volume), even if a determined person
-// could still grind it up slowly at real cost to themselves.
+// Not protected against: someone running many small real supply txs to
+// grind the total up. That's real volume at real cost though, not fake data.
 //
-// RPC note: uses Base's public https://mainnet.base.org endpoint, which
-// Base's own docs label "rate limited, not for production." Fine for a
-// competition-scale demo; if this ever needs to handle real traffic,
-// swap in a paid provider (Alchemy/Infura/QuickNode all have free tiers
-// well above the public endpoint's limits).
+// Uses Base's public RPC (mainnet.base.org), which Base's docs mark
+// "rate limited, not for production." Fine at this scale; swap in a paid
+// provider (Alchemy/Infura/QuickNode) if traffic grows.
 import { ethers } from 'ethers'
 import { Redis } from '@upstash/redis'
 import { AaveV3Base } from '@bgd-labs/aave-address-book'
 
-// Vercel's Upstash Marketplace integration sets KV_REST_API_URL and
-// KV_REST_API_TOKEN, not the plain UPSTASH_REDIS_REST_URL/TOKEN names
-// @upstash/redis's Redis.fromEnv() looks for by default — so we build
-// the client explicitly against the names Vercel actually provides.
+// Vercel's Upstash Marketplace integration uses KV_REST_API_URL /
+// KV_REST_API_TOKEN, not the UPSTASH_REDIS_REST_* names Redis.fromEnv()
+// defaults to.
 const redis = new Redis({
   url: process.env.KV_REST_API_URL,
   token: process.env.KV_REST_API_TOKEN
@@ -54,8 +42,6 @@ export default async function handler(req, res) {
     return
   }
 
-  // Idempotent: a hash that's already been credited is never credited
-  // again, whether from a retry, a resubmission, or an attempted replay.
   const alreadyCounted = await redis.sismember('ballast:counted_tx_hashes', txHash)
   if (alreadyCounted) {
     res.status(200).json({ ok: true, alreadyCounted: true })
@@ -76,8 +62,6 @@ export default async function handler(req, res) {
     return
   }
 
-  // Find a genuine Supply event, emitted by Aave's real Pool contract,
-  // for the real USDC reserve — not inferred, not assumed.
   let suppliedAmount = null
   for (const log of receipt.logs) {
     if (log.address.toLowerCase() !== POOL_ADDRESS.toLowerCase()) continue
@@ -85,7 +69,7 @@ export default async function handler(req, res) {
     try {
       parsed = POOL_INTERFACE.parseLog(log)
     } catch {
-      continue // Not a Supply log on this contract — keep scanning.
+      continue
     }
     if (parsed?.name === 'Supply' && parsed.args.reserve.toLowerCase() === USDC_ADDRESS.toLowerCase()) {
       suppliedAmount = parsed.args.amount
