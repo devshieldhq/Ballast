@@ -1,13 +1,12 @@
-// Supplies/withdraws USDC from Aave V3 on Base.
-// USDC, not USDT — Aave's Base market only has real listed liquidity in
-// USDC. Verify at app.aave.com/markets if this changes.
-// Pool address comes from Aave's official address-book package, not
-// hardcoded — addresses are proxied and wrong ones fail silently.
+// Supplies/withdraws USDC from Aave V3 on Base. USDC, not USDT — Aave's
+// Base market only has real listed liquidity in USDC.
+// Pool address comes from Aave's official address-book package rather
+// than being hardcoded.
 import { AaveV3Base } from '@bgd-labs/aave-address-book'
 import { ethers } from 'ethers'
 import { ensureApproval } from './erc20.js'
 
-const POOL_ADDRESS = AaveV3Base.POOL
+export const POOL_ADDRESS = AaveV3Base.POOL
 
 const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 const ATOKEN_USDC = '0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB'
@@ -34,7 +33,6 @@ export async function withdraw(tokenAddress, amount, signer) {
   const tx = await pool.withdraw(tokenAddress, amount, owner)
   return tx.wait()
 }
-
 
 export async function getUsdcSupplyApy(provider) {
   const pool = new ethers.Contract(POOL_ADDRESS, [
