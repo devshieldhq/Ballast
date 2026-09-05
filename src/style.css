@@ -280,3 +280,24 @@ body {
 .activity-item strong { color: var(--foam); font-weight: 500; }
 .activity-item a { color: var(--current); text-decoration: none; }
 .activity-item a:hover { color: var(--up); text-decoration: underline; }
+
+.asset-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+}
+.asset-toggle-label { font-size: 12px; color: var(--mist); }
+.asset-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--mist);
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.asset-btn.active {
+  border-color: var(--brass);
+  color: var(--brass-soft);
+}
