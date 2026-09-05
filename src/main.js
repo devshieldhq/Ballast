@@ -1,8 +1,8 @@
 import { ethers } from 'ethers'
 import { connectWallet } from './sdk/wallet.js'
 import { startMarketMonitor, subscribeMarket, getMarketHistory } from './lib/price.js'
-import { swapEthToUsdc, swapUsdcToEth, TOKENS } from './lib/swap.js'
-import { supply, withdraw, WITHDRAW_ALL, getUsdcSupplyApy, getShieldedUsdcBalance } from './lib/aave.js'
+import { swapEthToUsdc, swapUsdcToEth, TOKENS, SWAP_ROUTER_02 } from './lib/swap.js'
+import { supply, withdraw, WITHDRAW_ALL, getUsdcSupplyApy, getShieldedUsdcBalance, POOL_ADDRESS } from './lib/aave.js'
 import { getEthBalance, getTokenBalance, parseReceivedAmount } from './lib/erc20.js'
 import { getActivity, addActivityEvent } from './lib/activity.js'
 
@@ -25,6 +25,9 @@ const el = {
   shieldedAmount: document.getElementById('shielded-amount'),
   apyValue: document.getElementById('apy-value'),
   explorerLink: document.getElementById('position-explorer-link'),
+  shareLink: document.getElementById('share-link'),
+  linkRouter: document.getElementById('link-router'),
+  linkPool: document.getElementById('link-pool'),
   positionSince: document.getElementById('position-since'),
   activityCard: document.getElementById('activity-card'),
   activityList: document.getElementById('activity-list'),
@@ -114,13 +117,18 @@ function renderPosition() {
   el.positionEmpty.classList.toggle('hidden', state.shielded)
   el.positionActive.classList.toggle('hidden', !state.shielded)
   if (state.shielded) {
-    const display = ethers.formatUnits(state.shieldedUsdcAmount, 6)
-    el.shieldedAmount.textContent = `$${Number(display).toFixed(2)}`
+    const display = Number(ethers.formatUnits(state.shieldedUsdcAmount, 6)).toFixed(2)
+    el.shieldedAmount.textContent = `$${display}`
     el.apyValue.textContent = 'earning'
     el.explorerLink.href = `https://basescan.org/address/${state.address}`
     el.positionSince.textContent = state.shieldedAt
       ? `Shielded ${new Date(state.shieldedAt).toLocaleString()}`
       : ''
+
+    const shareText = `Just shielded $${display} from volatility using Ballast — ` +
+      `a Nimiq Pay Mini App that auto-parks crypto into USDC and Aave yield when markets get rough.`
+    const shareUrl = window.location.origin
+    el.shareLink.href = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`
   }
 }
 
@@ -353,6 +361,8 @@ subscribeMarket(renderMarket)
 refreshMarket()
 renderButton()
 loadPublicStats()
+el.linkRouter.href = `https://basescan.org/address/${SWAP_ROUTER_02}`
+el.linkPool.href = `https://basescan.org/address/${POOL_ADDRESS}`
 
 // Best-effort — the /api endpoints need Upstash Redis configured in
 // Vercel to actually work. Until then, this quietly does nothing rather
