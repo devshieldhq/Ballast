@@ -17,7 +17,7 @@ export const TOKENS = {
 }
 
 // Verify: docs.uniswap.org/contracts/v3/reference/deployments/base-deployments
-const SWAP_ROUTER_02 = '0x2626664c2603336E57B271c5C0b26F421741e481'
+export const SWAP_ROUTER_02 = '0x2626664c2603336E57B271c5C0b26F421741e481'
 const QUOTER_V2 = '0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a'
 
 // The most liquid USDC/WETH pool on Base is currently the 0.05% tier.
@@ -36,14 +36,13 @@ const QUOTER_ABI = [
   'function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96) params) returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)'
 ]
 
-// A router-recognized sentinel meaning "send output to the router itself,"
-// used when a second step (like unwrapping WETH to ETH) needs to happen
-// in the same multicall before funds reach the user.
+// A router sentinel meaning "send output to the router itself" — used
+// when a second step (unwrapping WETH) needs to happen in the same
+// multicall before funds reach the user.
 const ADDRESS_THIS = '0x00000000000000000000000000000000000002'
 
-// Reads a real on-chain quote via Uniswap's Quoter contract. This is a
-// state-changing-shaped call used in a read-only way (staticCall) — it
-// doesn't actually execute a swap or cost gas, it simulates one.
+// Simulates a swap via Uniswap's Quoter contract (staticCall — no gas,
+// no state change) to get a real price for slippage protection.
 async function getQuote(provider, { tokenIn, tokenOut, amountIn }) {
   const quoter = new ethers.Contract(QUOTER_V2, QUOTER_ABI, provider)
   const result = await quoter.quoteExactInputSingle.staticCall({
@@ -61,8 +60,7 @@ function minOutWithSlippage(quotedAmountOut, slippagePct) {
   return (quotedAmountOut * (10_000n - bps)) / 10_000n
 }
 
-// ETH -> USDC. Sends native ETH as msg.value; the router wraps it to WETH
-// internally when tokenIn is WETH9, so no separate wrap step is needed.
+// ETH -> USDC. Router auto-wraps ETH sent as msg.value when tokenIn is WETH9.
 export async function swapEthToUsdc(signer, amountWei, { slippagePct = 1 } = {}) {
   const provider = signer.provider
   const userAddress = await signer.getAddress()
@@ -90,9 +88,8 @@ export async function swapEthToUsdc(signer, amountWei, { slippagePct = 1 } = {})
   return tx.wait()
 }
 
-// USDC -> ETH. Needs an approval first (USDC is an ERC-20, unlike native
-// ETH), and needs a two-call multicall: swap into WETH held by the router
-// itself, then unwrap that WETH into native ETH sent to the user.
+// USDC -> ETH. Needs approval first, then a multicall: swap into WETH
+// held by the router, then unwrap to native ETH for the user.
 export async function swapUsdcToEth(signer, amountUsdc, { slippagePct = 1 } = {}) {
   const provider = signer.provider
   const userAddress = await signer.getAddress()
