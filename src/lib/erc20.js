@@ -28,10 +28,8 @@ export async function ensureApproval(spenderAddress, tokenAddress, amount, signe
   }
 }
 
-// Reads the ACTUAL amount a transaction moved, by decoding the token's own
-// Transfer event from the mined receipt, rather than trusting a quote or
-// an assumed amount from before the tx was sent. This is what removes the
-// need for hardcoded/assumed amounts anywhere funds actually move.
+// Reads the actual amount moved by decoding the token's Transfer event
+// from the mined receipt, rather than trusting a pre-trade quote.
 export function parseReceivedAmount(receipt, tokenAddress, toAddress) {
   const normalizedToken = tokenAddress.toLowerCase()
   const normalizedTo = toAddress.toLowerCase()
