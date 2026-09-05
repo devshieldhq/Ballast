@@ -3,7 +3,7 @@ import { connectWallet } from './sdk/wallet.js'
 import { startMarketMonitor, subscribeMarket, getMarketHistory } from './lib/price.js'
 import { swapEthToUsdc, swapUsdcToEth, TOKENS } from './lib/swap.js'
 import { supply, withdraw, WITHDRAW_ALL, getUsdcSupplyApy, getShieldedUsdcBalance } from './lib/aave.js'
-import { getEthBalance, parseReceivedAmount } from './lib/erc20.js'
+import { getEthBalance, getTokenBalance, parseReceivedAmount } from './lib/erc20.js'
 import { getActivity, addActivityEvent } from './lib/activity.js'
 
 const el = {
@@ -31,6 +31,7 @@ const el = {
   amountCard: document.getElementById('amount-card'),
   amountInput: document.getElementById('amount-input'),
   balanceNote: document.getElementById('balance-note'),
+  assetButtons: document.querySelectorAll('.asset-btn'),
   actionBtn: document.getElementById('action-btn'),
   status: document.getElementById('status-line')
 }
@@ -45,6 +46,9 @@ let state = {
   connected: false,
   address: null,
   ethBalance: 0n,
+  usdcWalletBalance: 0n, // USDC sitting in the wallet, separate from what's shielded in Aave
+  shieldAsset: 'ETH', // which asset the user is shielding FROM
+  unshieldAsset: 'ETH', // which asset the user wants back when unshielding
   shielded: false,
   shieldedUsdcAmount: 0n, // real on-chain amount, set only after a confirmed tx
   shieldedAt: null // only known within this session; not persisted
@@ -142,11 +146,18 @@ function renderActivity() {
 function renderAmountCard() {
   const show = state.connected && !state.shielded
   el.amountCard.classList.toggle('hidden', !show)
-  if (show) {
+  if (!show) return
+
+  if (state.shieldAsset === 'ETH') {
     const balanceEth = ethers.formatEther(state.ethBalance)
     const spendable = Math.max(0, Number(balanceEth) - GAS_BUFFER_ETH)
     el.balanceNote.textContent = `Balance: ${Number(balanceEth).toFixed(4)} ETH ` +
       `(up to ${spendable.toFixed(4)} shieldable, ${GAS_BUFFER_ETH} reserved for gas)`
+  } else {
+    const balanceUsdc = ethers.formatUnits(state.usdcWalletBalance, 6)
+    const ethForGas = ethers.formatEther(state.ethBalance)
+    el.balanceNote.textContent = `Balance: $${Number(balanceUsdc).toFixed(2)} USDC ` +
+      `(still needs a small amount of ETH for gas — you have ${Number(ethForGas).toFixed(4)})`
   }
 }
 
@@ -172,6 +183,7 @@ async function refreshMarket() {
 async function refreshBalance() {
   if (!state.connected) return
   state.ethBalance = await getEthBalance(provider, state.address)
+  state.usdcWalletBalance = await getTokenBalance(provider, TOKENS.USDC, state.address).catch(() => 0n)
   const shieldedBalance = await getShieldedUsdcBalance(provider, state.address).catch(() => 0n)
   state.shieldedUsdcAmount = shieldedBalance
   state.shielded = shieldedBalance > 0n
@@ -203,30 +215,54 @@ async function handleConnect() {
 }
 
 async function handleShield() {
-  const inputEth = Number(el.amountInput.value)
-  if (!inputEth || inputEth <= 0) {
+  const inputAmount = Number(el.amountInput.value)
+  if (!inputAmount || inputAmount <= 0) {
     setStatus('Enter an amount to shield')
-    return
-  }
-  const maxSpendable = Number(ethers.formatEther(state.ethBalance)) - GAS_BUFFER_ETH
-  if (inputEth > maxSpendable) {
-    setStatus(`That's more than your spendable balance (${maxSpendable.toFixed(4)} ETH)`)
     return
   }
 
   el.actionBtn.disabled = true
-  const amountWei = ethers.parseEther(inputEth.toString())
 
   try {
-    setStatus('Confirm the swap in your wallet…')
-    const swapReceipt = await swapEthToUsdc(signer, amountWei)
+    let usdcReceived
+    let supplyReceipt
 
-    // Read what actually landed in the wallet, not what the quote predicted —
-    // even with slippage protection, the exact figure can differ slightly.
-    const usdcReceived = parseReceivedAmount(swapReceipt, TOKENS.USDC, state.address)
+    if (state.shieldAsset === 'ETH') {
+      const maxSpendable = Number(ethers.formatEther(state.ethBalance)) - GAS_BUFFER_ETH
+      if (inputAmount > maxSpendable) {
+        setStatus(`That's more than your spendable balance (${maxSpendable.toFixed(4)} ETH)`)
+        el.actionBtn.disabled = false
+        return
+      }
+      const amountWei = ethers.parseEther(inputAmount.toString())
 
-    setStatus('Confirm the Aave supply in your wallet…')
-    const supplyReceipt = await supply(TOKENS.USDC, usdcReceived, signer)
+      setStatus('Confirm the swap in your wallet…')
+      const swapReceipt = await swapEthToUsdc(signer, amountWei)
+
+      // Read what actually landed in the wallet, not what the quote predicted —
+      // even with slippage protection, the exact figure can differ slightly.
+      usdcReceived = parseReceivedAmount(swapReceipt, TOKENS.USDC, state.address)
+
+      setStatus('Confirm the Aave supply in your wallet…')
+      supplyReceipt = await supply(TOKENS.USDC, usdcReceived, signer)
+    } else {
+      // USDC selected — no swap needed at all, supply it directly.
+      const maxUsdc = Number(ethers.formatUnits(state.usdcWalletBalance, 6))
+      if (inputAmount > maxUsdc) {
+        setStatus(`That's more than your USDC balance ($${maxUsdc.toFixed(2)})`)
+        el.actionBtn.disabled = false
+        return
+      }
+      if (state.ethBalance === 0n) {
+        setStatus('You still need a small amount of ETH to pay for gas')
+        el.actionBtn.disabled = false
+        return
+      }
+      usdcReceived = ethers.parseUnits(inputAmount.toFixed(6), 6)
+
+      setStatus('Confirm the Aave supply in your wallet…')
+      supplyReceipt = await supply(TOKENS.USDC, usdcReceived, signer)
+    }
 
     state.shielded = true
     state.shieldedUsdcAmount = usdcReceived
@@ -258,8 +294,14 @@ async function handleUnshield() {
     const withdrawReceipt = await withdraw(TOKENS.USDC, WITHDRAW_ALL, signer)
     const usdcWithdrawn = parseReceivedAmount(withdrawReceipt, TOKENS.USDC, state.address)
 
-    setStatus('Confirm the swap back to ETH…')
-    const swapBackReceipt = await swapUsdcToEth(signer, usdcWithdrawn)
+    let finalTxHash = withdrawReceipt.hash
+    if (state.unshieldAsset === 'ETH') {
+      setStatus('Confirm the swap back to ETH…')
+      const swapBackReceipt = await swapUsdcToEth(signer, usdcWithdrawn)
+      finalTxHash = swapBackReceipt.hash
+    }
+    // If unshieldAsset is USDC, the withdrawn USDC just stays in the
+    // wallet — no swap needed.
 
     state.shielded = false
     state.shieldedUsdcAmount = 0n
@@ -268,7 +310,7 @@ async function handleUnshield() {
       type: 'unshield',
       amount: Number(ethers.formatUnits(usdcWithdrawn, 6)).toFixed(2),
       timestamp: Date.now(),
-      txHash: swapBackReceipt.hash
+      txHash: finalTxHash
     })
     setStatus('Unshielded')
   } catch (err) {
@@ -280,6 +322,21 @@ async function handleUnshield() {
   renderAmountCard()
   renderButton()
 }
+
+el.assetButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const { role, asset } = btn.dataset
+    if (role === 'shield') {
+      state.shieldAsset = asset
+    } else {
+      state.unshieldAsset = asset
+    }
+    document.querySelectorAll(`.asset-btn[data-role="${role}"]`).forEach(b => {
+      b.classList.toggle('active', b.dataset.asset === asset)
+    })
+    renderAmountCard()
+  })
+})
 
 el.openAppBtn.addEventListener('click', () => {
   el.landing.classList.add('hidden')
