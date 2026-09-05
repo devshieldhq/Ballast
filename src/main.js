@@ -39,8 +39,8 @@ const el = {
   status: document.getElementById('status-line')
 }
 
-// Reserve some ETH for gas so "shield everything" doesn't leave the wallet
-// unable to pay for its own transactions. Adjust for actual Base gas costs.
+// Reserve some ETH for gas so shielding the full balance doesn't leave
+// nothing to pay for the transaction itself.
 const GAS_BUFFER_ETH = 0.003
 
 let provider = null
@@ -364,9 +364,7 @@ loadPublicStats()
 el.linkRouter.href = `https://basescan.org/address/${SWAP_ROUTER_02}`
 el.linkPool.href = `https://basescan.org/address/${POOL_ADDRESS}`
 
-// Best-effort — the /api endpoints need Upstash Redis configured in
-// Vercel to actually work. Until then, this quietly does nothing rather
-// than showing a broken or fake stat.
+// Needs Upstash Redis configured in Vercel; fails silently until then.
 async function loadPublicStats() {
   try {
     const res = await fetch('/api/stats')
