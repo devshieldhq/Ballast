@@ -1,6 +1,13 @@
 import { Redis } from '@upstash/redis'
 
-const redis = Redis.fromEnv()
+// Vercel's Upstash Marketplace integration sets KV_REST_API_URL and
+// KV_REST_API_TOKEN, not the plain UPSTASH_REDIS_REST_URL/TOKEN names
+// @upstash/redis's Redis.fromEnv() looks for by default — so we build
+// the client explicitly against the names Vercel actually provides.
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL,
+  token: process.env.KV_REST_API_TOKEN
+})
 
 export default async function handler(req, res) {
   const [totalUsd, totalCount] = await Promise.all([
