@@ -1,7 +1,7 @@
 import { ethers } from 'ethers'
 import { connectWallet } from './sdk/wallet.js'
 import { startMarketMonitor, subscribeMarket, getMarketHistory } from './lib/price.js'
-import { swapEthToUsdc, swapUsdcToEth, TOKENS, SWAP_ROUTER_02 } from './lib/swap.js'
+import { swapEthToUsdc, swapUsdcToEth, swapTokenToUsdc, TOKENS, DECIMALS, SWAP_ROUTER_02 } from './lib/swap.js'
 import { supply, withdraw, WITHDRAW_ALL, getUsdcSupplyApy, getShieldedUsdcBalance, POOL_ADDRESS } from './lib/aave.js'
 import { getEthBalance, getTokenBalance, parseReceivedAmount } from './lib/erc20.js'
 import { getActivity, addActivityEvent } from './lib/activity.js'
@@ -49,7 +49,7 @@ let state = {
   connected: false,
   address: null,
   ethBalance: 0n,
-  usdcWalletBalance: 0n, // USDC sitting in the wallet, separate from what's shielded in Aave
+  tokenBalances: {}, // wallet balances for non-ETH shield assets, keyed by asset name
   shieldAsset: 'ETH', // which asset the user is shielding FROM
   unshieldAsset: 'ETH', // which asset the user wants back when unshielding
   shielded: false,
@@ -162,9 +162,11 @@ function renderAmountCard() {
     el.balanceNote.textContent = `Balance: ${Number(balanceEth).toFixed(4)} ETH ` +
       `(up to ${spendable.toFixed(4)} shieldable, ${GAS_BUFFER_ETH} reserved for gas)`
   } else {
-    const balanceUsdc = ethers.formatUnits(state.usdcWalletBalance, 6)
+    const decimals = DECIMALS[state.shieldAsset]
+    const raw = state.tokenBalances[state.shieldAsset] ?? 0n
+    const balance = ethers.formatUnits(raw, decimals)
     const ethForGas = ethers.formatEther(state.ethBalance)
-    el.balanceNote.textContent = `Balance: $${Number(balanceUsdc).toFixed(2)} USDC ` +
+    el.balanceNote.textContent = `Balance: ${Number(balance).toFixed(decimals === 8 ? 6 : 4)} ${state.shieldAsset} ` +
       `(still needs a small amount of ETH for gas — you have ${Number(ethForGas).toFixed(4)})`
   }
 }
@@ -188,10 +190,19 @@ async function refreshMarket() {
   }
 }
 
+const SHIELDABLE_TOKENS = ['USDC', 'CBETH', 'WSTETH', 'CBBTC']
+
 async function refreshBalance() {
   if (!state.connected) return
   state.ethBalance = await getEthBalance(provider, state.address)
-  state.usdcWalletBalance = await getTokenBalance(provider, TOKENS.USDC, state.address).catch(() => 0n)
+
+  const balances = await Promise.all(
+    SHIELDABLE_TOKENS.map(name =>
+      getTokenBalance(provider, TOKENS[name], state.address).catch(() => 0n)
+    )
+  )
+  state.tokenBalances = Object.fromEntries(SHIELDABLE_TOKENS.map((name, i) => [name, balances[i]]))
+
   const shieldedBalance = await getShieldedUsdcBalance(provider, state.address).catch(() => 0n)
   state.shieldedUsdcAmount = shieldedBalance
   state.shielded = shieldedBalance > 0n
@@ -253,9 +264,9 @@ async function handleShield() {
 
       setStatus('Confirm the Aave supply in your wallet…')
       supplyReceipt = await supply(TOKENS.USDC, usdcReceived, signer)
-    } else {
-      // USDC selected — no swap needed at all, supply it directly.
-      const maxUsdc = Number(ethers.formatUnits(state.usdcWalletBalance, 6))
+    } else if (state.shieldAsset === 'USDC') {
+      // No swap needed at all, supply it directly.
+      const maxUsdc = Number(ethers.formatUnits(state.tokenBalances.USDC ?? 0n, 6))
       if (inputAmount > maxUsdc) {
         setStatus(`That's more than your USDC balance ($${maxUsdc.toFixed(2)})`)
         el.actionBtn.disabled = false
@@ -267,6 +278,28 @@ async function handleShield() {
         return
       }
       usdcReceived = ethers.parseUnits(inputAmount.toFixed(6), 6)
+
+      setStatus('Confirm the Aave supply in your wallet…')
+      supplyReceipt = await supply(TOKENS.USDC, usdcReceived, signer)
+    } else {
+      // cbETH, wstETH, or cbBTC — swap to USDC first, then supply.
+      const decimals = DECIMALS[state.shieldAsset]
+      const maxBalance = Number(ethers.formatUnits(state.tokenBalances[state.shieldAsset] ?? 0n, decimals))
+      if (inputAmount > maxBalance) {
+        setStatus(`That's more than your ${state.shieldAsset} balance (${maxBalance.toFixed(6)})`)
+        el.actionBtn.disabled = false
+        return
+      }
+      if (state.ethBalance === 0n) {
+        setStatus('You still need a small amount of ETH to pay for gas')
+        el.actionBtn.disabled = false
+        return
+      }
+      const amountIn = ethers.parseUnits(inputAmount.toFixed(decimals), decimals)
+
+      setStatus('Confirm the swap in your wallet…')
+      const swapReceipt = await swapTokenToUsdc(signer, TOKENS[state.shieldAsset], amountIn)
+      usdcReceived = parseReceivedAmount(swapReceipt, TOKENS.USDC, state.address)
 
       setStatus('Confirm the Aave supply in your wallet…')
       supplyReceipt = await supply(TOKENS.USDC, usdcReceived, signer)
