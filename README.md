@@ -1,52 +1,29 @@
 # Ballast
 
-A Nimiq Pay Mini App: shield volatile crypto into USDC during high
-volatility, parked in Aave V3 on Base to earn yield while it waits,
-unshield anytime.
+Shield volatile crypto into USDC during a crash, earn yield on it via Aave while you wait, unshield whenever. A Nimiq Pay Mini App, built for Cycle II of the Mini Apps Competition.
 
-Built for the Nimiq Mini Apps Competition, Cycle II.
-
-**Tested end to end on Base mainnet.**
+Tested end to end on Base mainnet with real funds.
 
 ## What it does
 
-- **Shield** — swap ETH into USDC via Uniswap V3, or supply USDC directly
-  if you already hold it, straight into Aave V3 on Base.
-- **Earn** — the deposited USDC earns real Aave yield the whole time it's
-  parked, shown as a live APY, not a placeholder.
-- **Unshield** — withdraw everything (principal + accrued interest) and
-  either swap back to ETH or keep it as USDC — your choice.
+- **Shield** — ETH → USDC via Uniswap, or supply USDC directly if you already hold it. Also works with cbETH, wstETH, and cbBTC.
+- **Earn** — USDC sits in Aave V3 earning real yield. APY shown is live, not made up.
+- **Unshield** — pull everything out (principal + interest), swap back to ETH or keep it as USDC.
 
-No custom smart contracts. Every fund-moving step calls an
-already-audited protocol (Uniswap V3, Aave V3) — Ballast is a thin,
-non-custodial layer on top, not a new place for funds to be at risk.
+No custom contracts. Everything routes through Uniswap V3 and Aave V3 — audited, existing infrastructure. Ballast doesn't hold your funds at any point.
 
-## Project structure
+## Structure
 
-- `index.html` / `src/main.js` / `src/style.css` — the app itself: a
-  landing page (asset pitch, contract links, trust statement) that reveals
-  a dashboard once you tap "Open app" and connect a wallet.
-- `src/lib/swap.js` — Uniswap V3 swap calls (SwapRouter02 + Quoter, both
-  directly, no aggregator or API key).
-- `src/lib/aave.js` — Aave V3 supply/withdraw, live APY, live position
-  balance.
-- `src/lib/erc20.js` — shared ERC-20 helpers (balance reads, approvals,
-  reading real transferred amounts from receipts).
-- `src/lib/price.js` — live price feed (Binance WebSocket + CoinGecko),
-  volatility/risk classification.
-- `src/lib/activity.js` — local, per-wallet shield/unshield history
-  (device-local, not synced — the real record is always the chain).
-- `src/sdk/wallet.js` — wallet connect, with a fallback so the whole app
-  is testable against MetaMask in a normal browser, not just inside
-  Nimiq Pay.
-- `api/track.js` / `api/stats.js` — a public "total shielded" counter.
-  Verifies a real Aave Supply event on-chain before crediting anything;
-  never trusts a client-reported amount.
-- `verify-track-logic.mjs` — standalone script to check `api/track.js`'s
-  parsing logic against a real transaction. Run with `node
-  verify-track-logic.mjs`.
-- `vercel.json` — security headers (CSP, frame protection, etc.) built
-  from an actual audit of the app's real network calls.
+- `index.html`, `src/main.js`, `src/style.css` — landing page + dashboard, one file, toggled by state.
+- `src/lib/swap.js` — Uniswap calls (SwapRouter02, Quoter). No aggregator, no API key.
+- `src/lib/aave.js` — supply/withdraw/APY/balance reads.
+- `src/lib/erc20.js` — approvals, balances, reading real transfer amounts off receipts.
+- `src/lib/price.js` — Binance WS + CoinGecko for price/volatility.
+- `src/lib/activity.js` — local shield/unshield history, per wallet, device-only.
+- `src/sdk/wallet.js` — wallet connect, falls back to plain MetaMask outside Nimiq Pay so this is actually testable in a browser.
+- `api/track.js`, `api/stats.js` — public "total shielded" counter. Verifies the on-chain Supply event before counting anything; doesn't trust the client.
+- `verify-track-logic.mjs` — run this once against a real tx to sanity-check the verification logic above actually works.
+- `vercel.json` — CSP + security headers.
 
 ## Setup
 
@@ -55,40 +32,22 @@ npm install
 npm run dev
 ```
 
-No API key or `.env` file needed for local development — price feeds and
-quotes are public reads, and swap/supply/withdraw are wallet-mediated.
+No env vars needed to run it locally — swaps/quotes/price are either public reads or wallet-mediated.
 
-The public counter (`api/track.js` / `api/stats.js`) needs Upstash Redis
-connected in your Vercel project (Storage tab → Create Database →
-Upstash → Redis). Until that's set up, the stat just stays hidden rather
-than showing an error or a fake number.
+The public counter needs Upstash Redis wired up in Vercel (Storage → Create Database → Upstash → Redis) or it just stays hidden — no fake numbers.
 
-Mini Apps load over HTTPS inside the Nimiq Pay WebView, so for on-device
-testing, tunnel your local dev server (ngrok, cloudflared) and open the
-tunnel URL via the current Nimiq Pay preview mechanism — check
-nimiq.dev/mini-apps, since this can change.
+To test inside Nimiq Pay, tunnel the dev server (ngrok/cloudflared) and load it via whatever Nimiq's current preview mechanism is — check nimiq.dev/mini-apps, this has moved before.
 
-## Things worth knowing before relying on this further
+## Known limitations
 
-- **Contract addresses** were verified against official sources
-  (Uniswap's deployments docs, Circle's USDC docs, Aave's address-book
-  package) at the time this was written. Addresses don't change often,
-  but re-verify if meaningful time has passed.
-- **Pool fee tier** (`POOL_FEE` in `swap.js`) is set to the 0.05% tier,
-  the most liquid USDC/WETH pool on Base as of writing — pool liquidity
-  shifts over time in a way contract addresses don't.
-- **The public counter** can't be inflated by a lying client (the amount
-  is read from the chain, not trusted from the browser), but it also
-  doesn't stop someone from running many small real supply transactions
-  themselves. That's real volume at real cost, not spoofed data, so the
-  number stays honest to what it claims to measure.
-- **Base's public RPC** (`mainnet.base.org`, used in `api/track.js`) is
-  labeled by Base's own docs as "rate limited, not for production." Fine
-  at competition scale; swap in a paid provider if traffic grows.
-- **Activity history is local to the device/browser** it was created on,
-  not synced anywhere. The Basescan link on each position is the real,
-  permanent record regardless.
+- Addresses were checked against official sources when this was written — Uniswap docs, Circle, Aave's address-book package. Re-check if it's been a while.
+- ETH/USDC swap uses the 0.05% fee tier. cbETH/wstETH/cbBTC try a few common tiers and use whatever actually quotes — their liquidity hasn't been checked as carefully.
+- Single-hop only. No pool against USDC at a common fee tier means the swap just fails, it doesn't try to route around it.
+- Only ETH and USDC-direct have been tested with real money. The other three assets haven't — start small.
+- The counter can't be spoofed with a fake number (it reads the chain, not the client), but nothing stops someone from running a bunch of tiny real transactions to pad it. Still real volume, just maybe not diverse users.
+- Uses Base's public RPC in `api/track.js`, which Base's own docs call "not for production." Fine at this scale — swap in a real provider if traffic ever grows.
+- Activity history lives in the browser it was created in. Doesn't sync anywhere. The Basescan link on your position is the real record either way.
 
 ## License
 
-MIT, per the competition rules.
+MIT.
