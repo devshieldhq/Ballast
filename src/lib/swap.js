@@ -20,7 +20,12 @@ export const TOKENS = {
   // Lido Wrapped stETH, official Base deployment. Verify: docs.lido.fi/deployed-contracts
   WSTETH: '0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452',
   // Coinbase Wrapped BTC. Verify: coinbase.com/cbbtc
-  CBBTC: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf'
+  CBBTC: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf',
+  // Bridged USDT on Base. Verify: basescan.org/token/0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2
+  // Note: Aave's Base market doesn't list USDT as a reserve, which is why
+  // Ballast has always supplied USDC to Aave regardless of input asset —
+  // USDT just swaps to USDC first, same as every other non-USDC asset here.
+  USDT: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2'
 }
 
 // Decimals per token — needed to parse/format amounts correctly.
@@ -31,7 +36,8 @@ export const DECIMALS = {
   USDC: 6,
   CBETH: 18,
   WSTETH: 18,
-  CBBTC: 8
+  CBBTC: 8,
+  USDT: 6
 }
 
 // Verify: docs.uniswap.org/contracts/v3/reference/deployments/base-deployments
