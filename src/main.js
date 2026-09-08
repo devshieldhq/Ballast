@@ -190,7 +190,7 @@ async function refreshMarket() {
   }
 }
 
-const SHIELDABLE_TOKENS = ['USDC', 'CBETH', 'WSTETH', 'CBBTC']
+const SHIELDABLE_TOKENS = ['USDC', 'CBETH', 'WSTETH', 'CBBTC', 'USDT']
 
 async function refreshBalance() {
   if (!state.connected) return
