@@ -6,7 +6,7 @@ Tested end to end on Base mainnet with real funds.
 
 ## What it does
 
-- **Shield** — ETH → USDC via Uniswap, or supply USDC directly if you already hold it. Also works with cbETH, wstETH, and cbBTC.
+- **Shield** — ETH → USDC via Uniswap, or supply USDC directly if you already hold it. Also works with cbETH, wstETH, cbBTC, and USDT.
 - **Earn** — USDC sits in Aave V3 earning real yield. APY shown is live, not made up.
 - **Unshield** — pull everything out (principal + interest), swap back to ETH or keep it as USDC.
 
@@ -41,9 +41,10 @@ To test inside Nimiq Pay, tunnel the dev server (ngrok/cloudflared) and load it 
 ## Known limitations
 
 - Addresses were checked against official sources when this was written — Uniswap docs, Circle, Aave's address-book package. Re-check if it's been a while.
-- ETH/USDC swap uses the 0.05% fee tier. cbETH/wstETH/cbBTC try a few common tiers and use whatever actually quotes — their liquidity hasn't been checked as carefully.
+- ETH/USDC swap uses the 0.05% fee tier. cbETH/wstETH/cbBTC/USDT try a few common tiers and use whatever actually quotes — their liquidity hasn't been checked as carefully.
 - Single-hop only. No pool against USDC at a common fee tier means the swap just fails, it doesn't try to route around it.
-- Only ETH and USDC-direct have been tested with real money. The other three assets haven't — start small.
+- Only ETH and USDC-direct have been tested with real money. The other four assets haven't — start small.
+- USDT support exists to satisfy the competition's asset requirement (Mini Apps must support USDT or NIM) — Aave's Base market doesn't actually list USDT as a reserve, so it swaps to USDC first like everything else here. NIM itself isn't supported; that would mean a second, separate integration on Nimiq's own chain, not attempted here.
 - The counter can't be spoofed with a fake number (it reads the chain, not the client), but nothing stops someone from running a bunch of tiny real transactions to pad it. Still real volume, just maybe not diverse users.
 - Uses Base's public RPC in `api/track.js`, which Base's own docs call "not for production." Fine at this scale — swap in a real provider if traffic ever grows.
 - Activity history lives in the browser it was created in. Doesn't sync anywhere. The Basescan link on your position is the real record either way.
