@@ -5,7 +5,7 @@ import { swapEthToUsdc, swapUsdcToEth, swapTokenToUsdc, TOKENS, DECIMALS, SWAP_R
 import { supply, withdraw, WITHDRAW_ALL, getUsdcSupplyApy, getShieldedUsdcBalance, POOL_ADDRESS } from './lib/aave.js'
 import { getEthBalance, getTokenBalance, parseReceivedAmount } from './lib/erc20.js'
 import { getActivity, addActivityEvent } from './lib/activity.js'
-
+ 
 const el = {
   statsLine: document.getElementById('stats-line'),
   landing: document.getElementById('landing'),
@@ -38,13 +38,18 @@ const el = {
   actionBtn: document.getElementById('action-btn'),
   status: document.getElementById('status-line')
 }
-
+ 
 // Reserve some ETH for gas so shielding the full balance doesn't leave
 // nothing to pay for the transaction itself.
 const GAS_BUFFER_ETH = 0.003
-
+ 
 let provider = null
 let signer = null
+// Reads (balances, APY) go through a direct public RPC connection, not
+// the wallet's own injected provider — confirmed Nimiq Pay's provider
+// doesn't reliably support generic read-only RPC passthrough, only the
+// actions a wallet needs to perform (accounts, sending transactions).
+const readProvider = new ethers.JsonRpcProvider('https://mainnet.base.org')
 let state = {
   connected: false,
   address: null,
@@ -56,16 +61,16 @@ let state = {
   shieldedUsdcAmount: 0n, // real on-chain amount, set only after a confirmed tx
   shieldedAt: null // only known within this session; not persisted
 }
-
+ 
 function setStatus(text) {
   el.status.textContent = text || ''
 }
-
+ 
 function renderMarket(snapshot) {
   el.price.textContent = `$${snapshot.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
   el.change.textContent = `${snapshot.change24h > 0 ? '+' : ''}${snapshot.change24h.toFixed(2)}%`
   el.change.className = `change ${snapshot.change24h >= 0 ? 'up' : 'down'}`
-
+ 
   const labels = { calm: 'CALM', watch: 'WATCH', high: 'HIGH RISK', critical: 'CRITICAL' }
   el.riskLevel.textContent = labels[snapshot.riskLevel] || 'WATCH'
   el.riskLevel.className = `risk ${snapshot.riskLevel}`
@@ -78,7 +83,7 @@ function renderMarket(snapshot) {
     ? 'Volatility is elevated — consider shielding'
     : 'Market looks calm right now'
 }
-
+ 
 function renderChart() {
   const points = getMarketHistory()
   if (!el.chart || points.length < 2) return
@@ -91,7 +96,7 @@ function renderChart() {
   const padTop = 18
   const padBottom = 8
   const plotHeight = height - padTop - padBottom
-
+ 
   const coords = points.map((p, i) => {
     const x = (i / Math.max(points.length - 1, 1)) * width
     const y = padTop + (1 - (p.price - min) / range) * plotHeight
@@ -100,7 +105,7 @@ function renderChart() {
   const linePoints = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
   const areaPoints = `0,${height} ${linePoints} ${width},${height}`
   const fmt = v => `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-
+ 
   el.chart.innerHTML = `
     <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img">
       <polygon points="${areaPoints}" fill="currentColor" opacity="0.12" />
@@ -112,7 +117,7 @@ function renderChart() {
     <span class="chart-label chart-label-low">${fmt(min)}</span>
   `
 }
-
+ 
 function renderPosition() {
   el.positionEmpty.classList.toggle('hidden', state.shielded)
   el.positionActive.classList.toggle('hidden', !state.shielded)
@@ -124,20 +129,20 @@ function renderPosition() {
     el.positionSince.textContent = state.shieldedAt
       ? `Shielded ${new Date(state.shieldedAt).toLocaleString()}`
       : ''
-
+ 
     const shareText = `Just shielded $${display} from volatility using Ballast — ` +
       `a Nimiq Pay Mini App that auto-parks crypto into USDC and Aave yield when markets get rough.`
     const shareUrl = window.location.origin
     el.shareLink.href = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`
   }
 }
-
+ 
 function renderActivity() {
   if (!state.address) return
   const events = getActivity(state.address)
   el.activityCard.classList.toggle('hidden', events.length === 0)
   if (events.length === 0) return
-
+ 
   el.activityList.innerHTML = events.map(ev => {
     const label = ev.type === 'shield' ? 'Shielded' : 'Unshielded'
     const when = new Date(ev.timestamp).toLocaleString()
@@ -150,12 +155,12 @@ function renderActivity() {
     </li>`
   }).join('')
 }
-
+ 
 function renderAmountCard() {
   const show = state.connected && !state.shielded
   el.amountCard.classList.toggle('hidden', !show)
   if (!show) return
-
+ 
   if (state.shieldAsset === 'ETH') {
     const balanceEth = ethers.formatEther(state.ethBalance)
     const spendable = Math.max(0, Number(balanceEth) - GAS_BUFFER_ETH)
@@ -170,7 +175,7 @@ function renderAmountCard() {
       `(still needs a small amount of ETH for gas — you have ${Number(ethForGas).toFixed(4)})`
   }
 }
-
+ 
 function renderButton() {
   if (!state.connected) {
     el.actionBtn.textContent = 'Connect wallet'
@@ -181,7 +186,7 @@ function renderButton() {
   }
   el.actionBtn.disabled = false
 }
-
+ 
 async function refreshMarket() {
   try {
     await startMarketMonitor()
@@ -189,30 +194,30 @@ async function refreshMarket() {
     el.volNote.textContent = 'Could not reach the price feed'
   }
 }
-
+ 
 const SHIELDABLE_TOKENS = ['USDC', 'CBETH', 'WSTETH', 'CBBTC', 'USDT']
-
+ 
 async function refreshBalance() {
   if (!state.connected) return
-  state.ethBalance = await getEthBalance(provider, state.address)
-
+  state.ethBalance = await getEthBalance(readProvider, state.address)
+ 
   const balances = await Promise.all(
     SHIELDABLE_TOKENS.map(name =>
-      getTokenBalance(provider, TOKENS[name], state.address).catch(() => 0n)
+      getTokenBalance(readProvider, TOKENS[name], state.address).catch(() => 0n)
     )
   )
   state.tokenBalances = Object.fromEntries(SHIELDABLE_TOKENS.map((name, i) => [name, balances[i]]))
-
-  const shieldedBalance = await getShieldedUsdcBalance(provider, state.address).catch(() => 0n)
+ 
+  const shieldedBalance = await getShieldedUsdcBalance(readProvider, state.address).catch(() => 0n)
   state.shieldedUsdcAmount = shieldedBalance
   state.shielded = shieldedBalance > 0n
-  const apy = await getUsdcSupplyApy(provider).catch(() => null)
+  const apy = await getUsdcSupplyApy(readProvider).catch(() => null)
   if (apy != null) el.apyValue.textContent = `${apy.toFixed(2)}% APY`
   renderPosition()
   renderActivity()
   renderAmountCard()
 }
-
+ 
 async function handleConnect() {
   setStatus('Connecting…')
   el.actionBtn.disabled = true
@@ -232,20 +237,20 @@ async function handleConnect() {
   }
   renderButton()
 }
-
+ 
 async function handleShield() {
   const inputAmount = Number(el.amountInput.value)
   if (!inputAmount || inputAmount <= 0) {
     setStatus('Enter an amount to shield')
     return
   }
-
+ 
   el.actionBtn.disabled = true
-
+ 
   try {
     let usdcReceived
     let supplyReceipt
-
+ 
     if (state.shieldAsset === 'ETH') {
       const maxSpendable = Number(ethers.formatEther(state.ethBalance)) - GAS_BUFFER_ETH
       if (inputAmount > maxSpendable) {
@@ -254,14 +259,14 @@ async function handleShield() {
         return
       }
       const amountWei = ethers.parseEther(inputAmount.toString())
-
+ 
       setStatus('Confirm the swap in your wallet…')
       const swapReceipt = await swapEthToUsdc(signer, amountWei)
-
+ 
       // Read what actually landed in the wallet, not what the quote predicted —
       // even with slippage protection, the exact figure can differ slightly.
       usdcReceived = parseReceivedAmount(swapReceipt, TOKENS.USDC, state.address)
-
+ 
       setStatus('Confirm the Aave supply in your wallet…')
       supplyReceipt = await supply(TOKENS.USDC, usdcReceived, signer)
     } else if (state.shieldAsset === 'USDC') {
@@ -278,7 +283,7 @@ async function handleShield() {
         return
       }
       usdcReceived = ethers.parseUnits(inputAmount.toFixed(6), 6)
-
+ 
       setStatus('Confirm the Aave supply in your wallet…')
       supplyReceipt = await supply(TOKENS.USDC, usdcReceived, signer)
     } else {
@@ -296,15 +301,15 @@ async function handleShield() {
         return
       }
       const amountIn = ethers.parseUnits(inputAmount.toFixed(decimals), decimals)
-
+ 
       setStatus('Confirm the swap in your wallet…')
       const swapReceipt = await swapTokenToUsdc(signer, TOKENS[state.shieldAsset], amountIn)
       usdcReceived = parseReceivedAmount(swapReceipt, TOKENS.USDC, state.address)
-
+ 
       setStatus('Confirm the Aave supply in your wallet…')
       supplyReceipt = await supply(TOKENS.USDC, usdcReceived, signer)
     }
-
+ 
     state.shielded = true
     state.shieldedUsdcAmount = usdcReceived
     state.shieldedAt = Date.now()
@@ -319,13 +324,13 @@ async function handleShield() {
   } catch (err) {
     setStatus(err.message)
   }
-
+ 
   await refreshBalance()
   renderPosition()
   renderAmountCard()
   renderButton()
 }
-
+ 
 async function handleUnshield() {
   el.actionBtn.disabled = true
   try {
@@ -334,7 +339,7 @@ async function handleUnshield() {
     // re-supplying a remembered figure that could drift from the truth.
     const withdrawReceipt = await withdraw(TOKENS.USDC, WITHDRAW_ALL, signer)
     const usdcWithdrawn = parseReceivedAmount(withdrawReceipt, TOKENS.USDC, state.address)
-
+ 
     let finalTxHash = withdrawReceipt.hash
     if (state.unshieldAsset === 'ETH') {
       setStatus('Confirm the swap back to ETH…')
@@ -343,7 +348,7 @@ async function handleUnshield() {
     }
     // If unshieldAsset is USDC, the withdrawn USDC just stays in the
     // wallet — no swap needed.
-
+ 
     state.shielded = false
     state.shieldedUsdcAmount = 0n
     state.shieldedAt = null
@@ -357,13 +362,13 @@ async function handleUnshield() {
   } catch (err) {
     setStatus(err.message)
   }
-
+ 
   await refreshBalance()
   renderPosition()
   renderAmountCard()
   renderButton()
 }
-
+ 
 el.assetButtons.forEach(btn => {
   btn.addEventListener('click', () => {
     const { role, asset } = btn.dataset
@@ -378,25 +383,25 @@ el.assetButtons.forEach(btn => {
     renderAmountCard()
   })
 })
-
+ 
 el.openAppBtn.addEventListener('click', () => {
   el.landing.classList.add('hidden')
   el.appShell.classList.remove('hidden')
 })
-
+ 
 el.actionBtn.addEventListener('click', () => {
   if (!state.connected) return handleConnect()
   if (!state.shielded) return handleShield()
   return handleUnshield()
 })
-
+ 
 subscribeMarket(renderMarket)
 refreshMarket()
 renderButton()
 loadPublicStats()
 el.linkRouter.href = `https://basescan.org/address/${SWAP_ROUTER_02}`
 el.linkPool.href = `https://basescan.org/address/${POOL_ADDRESS}`
-
+ 
 // Needs Upstash Redis configured in Vercel; fails silently until then.
 async function loadPublicStats() {
   try {
@@ -412,7 +417,7 @@ async function loadPublicStats() {
     // No backend configured yet, or offline — stat stays hidden.
   }
 }
-
+ 
 // Sends only the transaction hash — the server verifies the real amount
 // on-chain itself rather than trusting anything reported here.
 async function reportShieldToPublicStats(txHash) {
@@ -426,3 +431,4 @@ async function reportShieldToPublicStats(txHash) {
     // Non-critical — the shield itself already succeeded on-chain.
   }
 }
+ 
